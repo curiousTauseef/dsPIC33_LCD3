@@ -9,7 +9,7 @@ pipeline {
 
     parameters {
         string( name: 'NOTIFICATION_EMAIL',
-            defaultValue: 'Jayachandran.Dharuman@microchip.com',
+            defaultValue: 'harish.agari@microchip.com, Jayachandran.Dharuman@microchip.com',
             description: "Email to send build failure and fixed notifications.")
     }
 
@@ -26,17 +26,54 @@ pipeline {
             }
         }
 
-
-    }
+        stage('Build') {
+            steps {
+                script {
+                    execute("git clone https://bitbucket.microchip.com/scm/citd/tool-mplabx-c-build.git")
+                    execute("cd ./tool-mplabx-c-build && node buildLauncher.js sp=../ rp=./output genMK=true")
+                }
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                script {
+                    execute("git clone https://bitbucket.microchip.com/scm/citd/tool-mplabx-c-test-coverage.git")
+                    execute("cd ./tool-mplabx-c-test-coverage && node testCoverageLauncher.js sp=../ rp=./output conf=default")
+                }
+            }
+        }
+		
+		stage('Analyze') {
+            when {
+                branch 'develop'
+            }
+            environment {
+                scannerHome = tool 'SonarQube Scanner 3.0.3.778'
+            }
+            steps {
+                dir('TestProject.X') {
+                    // Do not fail if SonarQube fails. SonarQube server is too unstable.
+                    catchError(buildResult: "SUCCESS", stageResult: "FAILURE", message: "Error when analyzing build with SonarQube")  {
+                        withSonarQubeEnv('Microchip SonarQube') {
+                            sh "${scannerHome}/bin/sonar-scanner "-Dsonar.projectKey=TestProject sonar.projectName=TestProject -Dsonar.sources=TestProject.X\main.c -Dsonar.lang.patterns.c++=*/.cxx,*/.cpp,*/.cc,*/.hxx,*/.hpp,*/.hh  -Dsonar.projectVersion=1.0"
+                        }
+                    }
+                }
+            }
+        }
+      }
 
     post {
         success{
             script {
                 if (!"${env.CHANGE_AUTHOR_EMAIL}".equalsIgnoreCase("null")) {
+                    archiveArtifacts artifacts: "tool-mplabx-c-build/output/**,tool-mplabx-c-test-coverage/output/**", fingerprint: true
                     mail to: "${env.CHANGE_AUTHOR_EMAIL}, ${params.NOTIFICATION_EMAIL}",
                     subject: "Successful Pipeline: ${currentBuild.fullDisplayName}",
                     body: "Something is right with ${env.BUILD_URL}"
                 } else {
+                    archiveArtifacts artifacts: "tool-mplabx-c-build/output/**,tool-mplabx-c-test-coverage/output/**", fingerprint: true
                     mail to: "${params.NOTIFICATION_EMAIL}",
                     subject: "Successful Pipeline: ${currentBuild.fullDisplayName}",
                     body: "Something is right with ${env.BUILD_URL}"
@@ -46,10 +83,12 @@ pipeline {
         failure {
             script {
                 if (!"${env.CHANGE_AUTHOR_EMAIL}".equalsIgnoreCase("null")) {
+                    archiveArtifacts artifacts: "tool-mplabx-c-build/output/**,tool-mplabx-c-test-coverage/output/**", fingerprint: true
                     mail to: "${env.CHANGE_AUTHOR_EMAIL}, ${params.NOTIFICATION_EMAIL}",
                     subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
                     body: "Pipeline failure. ${env.BUILD_URL}"
                 } else {
+                    archiveArtifacts artifacts: "tool-mplabx-c-build/output/**,tool-mplabx-c-test-coverage/output/**", fingerprint: true
                     mail to: "${params.NOTIFICATION_EMAIL}",
                     subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
                     body: "Pipeline failure. ${env.BUILD_URL}"
@@ -66,3 +105,4 @@ def execute(String command) {
         bat command
     }
 }
+
