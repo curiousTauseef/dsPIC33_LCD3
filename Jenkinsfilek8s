@@ -35,15 +35,7 @@ pipeline {
             }
         }
         
-        stage('Test') {
-            steps {
-                script {
-                    execute("git clone https://bitbucket.microchip.com/scm/citd/tool-mplabx-c-test-coverage.git")
-                    execute("cd ./tool-mplabx-c-test-coverage && node testCoverageLauncher.js sp=../ rp=./output conf=default")
-                }
-            }
-        }
-		
+	
 		stage('Analyze') {
             when {
                 branch 'develop'
